@@ -2,10 +2,6 @@
 .vscode/
 __pycache__/
 
-# data
-data/
-!data/sample.*
-
 # repo
 thesis/*
 !thesis/*.cmd
