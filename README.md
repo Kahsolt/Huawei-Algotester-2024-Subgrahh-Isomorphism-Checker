@@ -1,4 +1,4 @@
-# Huawei-Algotester-2024-Subgrahh-Isomorphism-Checker
+# Huawei-Algotester-2024-Subgraph-Isomorphism-Checker
 
     Contest solution for 华为算法精英实战营第十二期-子图召回
 
@@ -13,13 +13,17 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 
 ⚪ run
 
-- ???
+- `pip install -r requirements.txt`
+- `python main.py`
 
 
 #### refenrence
 
 - networkx-VF2算法: https://networkx.org/documentation/stable/reference/algorithms/isomorphism.vf2.html
 - rustworkx-is_subgraph_isomorphic: https://www.rustworkx.org/apiref/rustworkx.is_subgraph_isomorphic.html#rustworkx.is_subgraph_isomorphic
+- libs
+  - rustworkx: https://github.com/Qiskit/rustworkx
+  - networkx: https://github.com/networkx/networkx
 - repos
   - (C) https://github.com/MiviaLab/vf2lib
   - (C++) https://github.com/xysmlx/VF2
