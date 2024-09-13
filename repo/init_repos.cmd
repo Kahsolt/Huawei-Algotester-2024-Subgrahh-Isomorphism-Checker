@@ -2,6 +2,8 @@
 
 PUSHD %~dp0
 
+git clone https://github.com/RapidsAtHKUST/LIGHT
+
 git clone https://github.com/MiviaLab/vf2lib
 git clone https://github.com/xysmlx/VF2 VF2.xysmlx
 git clone https://github.com/bookug/VF2 VF2.bookug

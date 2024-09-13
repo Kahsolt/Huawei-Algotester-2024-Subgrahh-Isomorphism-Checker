@@ -19,13 +19,19 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 
 #### refenrence
 
-- networkx-VF2算法: https://networkx.org/documentation/stable/reference/algorithms/isomorphism.vf2.html
-- rustworkx-is_subgraph_isomorphic: https://www.rustworkx.org/apiref/rustworkx.is_subgraph_isomorphic.html#rustworkx.is_subgraph_isomorphic
+- thesis
+  - networkx-VF2算法: https://networkx.org/documentation/stable/reference/algorithms/isomorphism.vf2.html
+  - rustworkx-is_subgraph_isomorphic: https://www.rustworkx.org/apiref/rustworkx.is_subgraph_isomorphic.html#rustworkx.is_subgraph_isomorphic
+  - LIGHT: https://ieeexplore.ieee.org/abstract/document/8731613
+  - modified VF3 & BoostISO: https://arxiv.org/abs/2012.06802
 - libs
   - rustworkx: https://github.com/Qiskit/rustworkx
   - networkx: https://github.com/networkx/networkx
 - repos
   - (C) https://github.com/MiviaLab/vf2lib
+  - (C) https://github.com/MiviaLab/vf3lib
+    - https://mivia.unisa.it/datasets/graph-database/vf3-library/vf3-in-action/
+    - https://mivia.unisa.it/wp-content/uploads/2016/05/VF3_inBrief.pdf
   - (C++) https://github.com/xysmlx/VF2
     - report: https://github.com/xysmlx/VF2/blob/master/Report/VF2Report.pdf
   - (C++) https://github.com/bookug/VF2
