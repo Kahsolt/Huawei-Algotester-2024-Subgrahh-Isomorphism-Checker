@@ -44,6 +44,7 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
   - (Java) https://github.com/InnoFang/subgraph-isomorphism
   - (Python) https://github.com/kpetridis24/vf2-pp
   - (Python) https://github.com/mjyoussef/VF2SAGE
+  - (Rust2Python) https://github.com/6god-rail-flower-water/Subgraph-Isomorphic
 - C++ 快读快写 & 火车头优化
   - https://www.acwing.com/blog/content/36914/
   - https://www.cnblogs.com/fusiwei/p/11457143.html

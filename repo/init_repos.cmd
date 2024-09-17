@@ -13,6 +13,8 @@ git clone https://github.com/InnoFang/subgraph-isomorphism
 git clone https://github.com/kpetridis24/vf2-pp
 git clone https://github.com/mjyoussef/VF2SAGE
 
+git clone https://github.com/6god-rail-flower-water/Subgraph-Isomorphic
+
 POPD
 
 ECHO Done!
