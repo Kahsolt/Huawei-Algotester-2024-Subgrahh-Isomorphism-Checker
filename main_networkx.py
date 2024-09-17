@@ -71,6 +71,7 @@ def run_from_random():
     if f:
       print(f'[{i}] ' + ' '.join(str(x + 1) for x in f))
 
+
 if __name__ == '__main__':
   #run_from_stdin()
   run_from_random()
