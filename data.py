@@ -19,6 +19,7 @@ TARGET_GRAPHS: List[Graph] = []
 QUERY_GRAPHS: Dict[int, List[Graph]] = {}
 TARGET_GRAPHS_LEN = 10000
 QUERY_GRAPHS_LEN  = 1000
+QUERY_GRAPH_EDGES = [4, 8, 12, 16, 20, 24]
 
 
 def _load_graphDB_file(fp:Path) -> List[Graph]:
@@ -52,7 +53,7 @@ def _load_graphDB_file(fp:Path) -> List[Graph]:
 
 def _cache_graphDB_data(n_edges=None):
   global TARGET_GRAPHS, QUERY_GRAPHS
-  assert n_edges in [None, 4, 8, 12, 16, 20]
+  assert n_edges in [None] + QUERY_GRAPH_EDGES
   if n_edges is None:
     if not TARGET_GRAPHS:
       TARGET_GRAPHS = _load_graphDB_file(DATA_GRAPHDB_PATH / 'dataset.txt')
@@ -67,7 +68,7 @@ def get_query_pair(target:int=None, n_edges:int=None) -> Tuple[Graph, List[Graph
   assert 0 <= target < TARGET_GRAPHS_LEN
   _cache_graphDB_data()
   g = TARGET_GRAPHS[target]
-  n_edges = n_edges or random.choice([4, 8, 12, 16, 20])
+  n_edges = n_edges or random.choice(QUERY_GRAPH_EDGES)
   _cache_graphDB_data(n_edges)
   s_list = QUERY_GRAPHS[n_edges]
   return g, s_list

@@ -5,25 +5,72 @@
 # Copy & modify the impl. of networkx
 # https://networkx.org/documentation/stable/reference/algorithms/isomorphism.html
 
-from sys import stdin
+from time import time
 from collections import defaultdict
-from typing import List, Tuple, NamedTuple, Set, Dict
+from typing import List, Tuple, NamedTuple, Set, Dict, Union
 
-# 用于对拍测试
-from rustworkx import PyGraph
-from rustworkx import graph_vf2_mapping
+from tqdm import tqdm
+from rustworkx import PyGraph, graph_vf2_mapping
+
+from data import QUERY_GRAPH_EDGES, TARGET_GRAPHS_LEN, get_query_pair
 
 
-''' ↓↓↓ networkx stuff  '''
+''' ↓↓↓ Core data structure and algorithm ↓↓↓ '''
 
-from networkx import Graph
+Labels = List[int]
+Nodes = List[int]
+Edges = List[Tuple[int, int]]
+Degrees = List[int]
+Groups = Dict[int, Set[int]]
+Mapping = Dict[int, int]
+Result = Tuple[int]
 
-def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Dict[int, int]:
+class Graph:
+
+  def __init__(self, labels:Labels, edges:Edges):
+    self.n = len(labels)
+    self.m = len(edges)
+    self.labels = labels
+    self.edges = edges
+
+    self.degree = [0] * self.n
+    self.adj = [set() for _ in range(self.n)]
+    for u, v in edges:
+      self.degree[u] += 1
+      self.degree[v] += 1
+      self.adj[u].add(v)
+      self.adj[v].add(u)
+
+  def __getitem__(self, i:int):
+    return self.adj[i]
+
+class GraphParameters(NamedTuple):
+  G1: Graph
+  G2: Graph
+  G1_labels: Labels
+  G2_labels: Labels
+  nodes_of_G1Labels: Groups
+  nodes_of_G2Labels: Groups
+  G1_nodes_cover_degree: Groups
+  G2_nodes_cover_degree: Groups
+
+class State(NamedTuple):
+  mapping: Dict[int, int]           # subgraph (u) -> graph (v)
+  reverse_mapping: Dict[int, int]   # graph (v) -> subgraph (u)
+  T1: Set[int]
+  T1_in: Set[int]
+  T1_tilde: Set[int]
+  T1_tilde_in: Set[int]
+  T2: Set[int]
+  T2_in: Set[int]
+  T2_tilde: Set[int]
+  T2_tilde_in: Set[int]
+
+def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Mapping:
   # 初始化图和状态信息 (注意图的编号顺序与论文相反!!)
   G1, G2 = subgraph, graph
-  G1_degree = dict(G1.degree)
-  G2_degree = dict(G2.degree)
-  graph_params, state_params = _initialize_parameters(G1, G2, G1_degree, G2_degree)
+  G1_degree = G1.degree
+  graph_params, state_params = _initialize_parameters(G1, G2, G1_degree, G2.degree)
 
   # 剪枝检查: 大图覆盖子图标签
   if not set(graph_params.nodes_of_G1Labels).issubset(graph_params.nodes_of_G2Labels): return
@@ -38,7 +85,7 @@ def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Dict[int, int]:
   node_order = _matching_order(graph_params)
 
   # 初始化DFS栈
-  stack: List[int, List[int]] = []
+  stack: List[int, Nodes] = []
   candidates = iter(_find_candidates(node_order[0], graph_params, state_params, G1_degree))
   stack.append((node_order[0], candidates))
   matching_node = 1
@@ -65,7 +112,7 @@ def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Dict[int, int]:
     # 匹配成功
     if not _cut_PT(current_node, candidate, graph_params, state_params):
       # 找到一个解
-      if len(mapping) == G1.number_of_nodes() - 1:
+      if len(mapping) == G1.n - 1:
         cp_mapping = mapping.copy()
         cp_mapping[current_node] = candidate
         return cp_mapping   # just need one!
@@ -79,36 +126,14 @@ def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Dict[int, int]:
       stack.append((node_order[matching_node], candidates))
       matching_node += 1
 
-class GraphParameters(NamedTuple):
-  G1: Graph
-  G2: Graph
-  G1_labels: Dict[int, int]
-  G2_labels: Dict[int, int]
-  nodes_of_G1Labels: Dict[int, Set[int]]
-  nodes_of_G2Labels: Dict[int, Set[int]]
-  G1_nodes_cover_degree: Dict[int, Set[int]]
-  G2_nodes_cover_degree: Dict[int, Set[int]]
-
-class StateParameters(NamedTuple):
-  mapping: Dict[int, int]           # subgraph (u) -> graph (v)
-  reverse_mapping: Dict[int, int]   # graph (v) -> subgraph (u)
-  T1: Set[int]
-  T1_in: Set[int]
-  T1_tilde: Set[int]
-  T1_tilde_in: Set[int]
-  T2: Set[int]
-  T2_in: Set[int]
-  T2_tilde: Set[int]
-  T2_tilde_in: Set[int]
-
-def groups(many_to_one:dict) -> dict:
+def groups(many_to_one:Union[dict, list]) -> Groups:
   one_to_many = defaultdict(set)
-  for v, k in many_to_one.items():
+  for v, k in (many_to_one.items() if isinstance(many_to_one, dict) else enumerate(many_to_one)):
     one_to_many[k].add(v)
   return dict(one_to_many)
 
-def groups_to_accumulated_groups(group:dict) -> dict:
-  group_acc: Dict[int, Set[int]] = {}
+def groups_to_accumulated_groups(group:dict) -> Groups:
+  group_acc = defaultdict(set)
   for deg in sorted(group):
     nodes = group[deg]
     for v in group_acc.values():
@@ -116,15 +141,12 @@ def groups_to_accumulated_groups(group:dict) -> dict:
     group_acc[deg] = nodes
   return group_acc
 
-def bfs_layers(G:Graph, sources:List[int]):
-  if sources in G: sources = [sources]
-
-  current_layer = list(sources)
-  visited = set(sources)
+def bfs_layers(G:Graph, source:int):
+  current_layer = [source]
+  visited = {source}
   while current_layer:
-    cur_layer = current_layer.copy()
-    yield cur_layer
-    next_layer: List[int] = []
+    yield current_layer.copy()
+    next_layer: Nodes = []
     for node in current_layer:
       for child in G[node]:
         if child not in visited:
@@ -132,10 +154,7 @@ def bfs_layers(G:Graph, sources:List[int]):
           next_layer.append(child)
     current_layer = next_layer
 
-def _initialize_parameters(G1:Graph, G2:Graph, G1_degree:Dict[int, int], G2_degree:Dict[int, int]):
-  G1_labels = dict(G1.nodes(data='label'))  # node_id => label
-  G2_labels = dict(G2.nodes(data='label'))  # node_id => label
-
+def _initialize_parameters(G1:Graph, G2:Graph, G1_degree:Degrees, G2_degree:Degrees):
   G1_nodes_of_degree = groups(G1_degree)
   G1_nodes_cover_degree = groups_to_accumulated_groups(G1_nodes_of_degree)
   G2_nodes_of_degree = groups(G2_degree)
@@ -144,46 +163,46 @@ def _initialize_parameters(G1:Graph, G2:Graph, G1_degree:Dict[int, int], G2_degr
   graph_params = GraphParameters(
     G1,
     G2,
-    G1_labels,
-    G2_labels,
-    groups(G1_labels),
-    groups(G2_labels),
+    G1.labels,
+    G2.labels,
+    groups(G1.labels),
+    groups(G2.labels),
     G1_nodes_cover_degree,
     G2_nodes_cover_degree,
   )
 
-  state_params = StateParameters(
+  state_params = State(
     {},
     {},
     set(),
     set(),
-    set(G1.nodes()),
+    set(range(G1.n)),
     set(),
     set(),
     set(),
-    set(G2.nodes()),
+    set(range(G2.n)),
     set(),
   )
 
   return graph_params, state_params
 
-def _matching_order(graph_params:GraphParameters) -> List[int]:
+def _matching_order(graph_params:GraphParameters) -> Nodes:
   G1, _, G1_labels, _, _, nodes_of_G2Labels, _, _ = graph_params
 
   # 大图各label计数
   label_rarity = {label: len(nodes) for label, nodes in nodes_of_G2Labels.items()}
   # 子图未排序节点 & 各节点已征用度数 (拟连通度)    # TODO: 改为百分比(?)
-  V1_unordered = set(G1.nodes())
+  V1_unordered = set(range(G1.n))
   used_degrees = {node: 0 for node in V1_unordered}
   # 子图已排序节点
-  node_order: List[int] = []
+  node_order: Nodes = []
 
   while V1_unordered:
     # 未排序节点中label最罕见的节点
     max_rarity = min(label_rarity[G1_labels[x]] for x in V1_unordered)
     rarest_nodes = [n for n in V1_unordered if label_rarity[G1_labels[n]] == max_rarity]
     # 其中度最大的一个
-    max_node = max(rarest_nodes, key=G1.degree)
+    max_node = max(rarest_nodes, key=lambda e: G1.degree[e])
     # 宽搜处理整个连通域
     for nodes_to_add in bfs_layers(G1, max_node):
       while nodes_to_add:
@@ -201,14 +220,14 @@ def _matching_order(graph_params:GraphParameters) -> List[int]:
         node_order.append(next_node)
         # 更新辅助统计信息
         label_rarity[G1_labels[next_node]] -= 1
-        for node in G1.neighbors(next_node):
+        for node in G1[next_node]:
           used_degrees[node] += 1
 
   return node_order
 
-def _find_candidates(u:int, graph_params:GraphParameters, state_params:StateParameters, G1_degree:Dict[int, int]):
+def _find_candidates(u:int, graph_params:GraphParameters, state:State, G1_degree:Degrees):
   G1, G2, G1_labels, _, _, nodes_of_G2Labels, _, G2_nodes_cover_degree = graph_params
-  mapping, reverse_mapping, _, _, _, _, _, _, T2_tilde, _ = state_params
+  mapping, reverse_mapping, _, _, _, _, _, _, T2_tilde, _ = state
 
   # 节点 u 的一些近邻已在映射中？
   covered_neighbors = [nbr for nbr in G1[u] if nbr in mapping]
@@ -236,9 +255,9 @@ def _find_candidates(u:int, graph_params:GraphParameters, state_params:StatePara
   common_nodes.intersection_update(valid_label_nodes)   # 节点 v 需与节点 u 标签一致
   return common_nodes
 
-def _cut_PT(u:int, v:int, graph_params:GraphParameters, state_params:StateParameters):
+def _cut_PT(u:int, v:int, graph_params:GraphParameters, state:State):
   G1, G2, G1_labels, G2_labels, _, _, _, _ = graph_params
-  _, _, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state_params
+  _, _, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
 
   u_labels_successors = groups({n1: G1_labels[n1] for n1 in G1[u]})
   v_labels_successors = groups({n2: G2_labels[n2] for n2 in G2[v]})
@@ -258,9 +277,9 @@ def _cut_PT(u:int, v:int, graph_params:GraphParameters, state_params:StateParame
 
   return False
 
-def _update_Tinout(new_node1:int, new_node2:int, graph_params:GraphParameters, state_params:StateParameters):
+def _update_Tinout(new_node1:int, new_node2:int, graph_params:GraphParameters, state:State):
   G1, G2, _, _, _, _, _, _ = graph_params
-  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state_params
+  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
 
   uncovered_successors_G1 = {succ for succ in G1[new_node1] if succ not in mapping}
   uncovered_successors_G2 = {succ for succ in G2[new_node2] if succ not in reverse_mapping}
@@ -276,10 +295,10 @@ def _update_Tinout(new_node1:int, new_node2:int, graph_params:GraphParameters, s
   T1_tilde.discard(new_node1)
   T2_tilde.discard(new_node2)
 
-def _restore_Tinout(popped_node1:int, popped_node2:int, graph_params:GraphParameters, state_params:StateParameters):
+def _restore_Tinout(popped_node1:int, popped_node2:int, graph_params:GraphParameters, state:State):
   # If the node we want to remove from the mapping, has at least one covered neighbor, add it to T1.
   G1, G2, _, _, _, _, _, _ = graph_params
-  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state_params
+  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
 
   is_added = False
   for neighbor in G1[popped_node1]:
@@ -312,51 +331,38 @@ def _restore_Tinout(popped_node1:int, popped_node2:int, graph_params:GraphParame
   if not is_added:
     T2_tilde.add(popped_node2)
 
-''' ↑↑↑ networkx stuff '''
+''' ↑↑↑ Core data structure and algorithm ↑↑↑ '''
 
 
-def read_graph() -> Graph:
-  n, m = [int(x) for x in stdin.readline().split()]
-  a: List[int] = [int(x) for x in stdin.readline().split()]
-  e: List[Tuple[int, int]] = [tuple(int(x) - 1 for x in stdin.readline().split()) for _ in range(m)]
+def make_graph(labels:Labels, edges:Edges, offset_by_one:bool=False) -> Graph:
+  if offset_by_one:
+    edges = [(u-1, v-1) for u, v in edges]
+  return Graph(labels, edges)
 
-  g = Graph()
-  for i, it in enumerate(a):
-    g.add_node(i, label=it)
-  for u, v in e:
-    g.add_edge(u, v)
-  return g
-
-def make_graph(lables:List[int], edges:List[Tuple[int, int]], offset_by_one:bool=True):
-  offset = int(offset_by_one)
-  g = Graph()
-  for i, label in enumerate(lables):
-    g.add_node(i, label=label)
-  for u, v in edges:
-    g.add_edge(u - offset, v - offset)
-  return g
-
-def nx_to_rx(g:Graph) -> PyGraph:
-  a = g.nodes
-  e = g.edges
-
+def to_rx(graph:Graph) -> PyGraph:
   g = PyGraph()
   node_ids: List[int] = []
-  for it in a:
+  for it in graph.labels:
     node_ids.append(g.add_node(it))
-  for u, v in e:
+  for u, v in graph.edges:
     g.add_edge(node_ids[u], node_ids[v], 1.0)
   return g
 
-def find_isomorphism(g:Graph, s:Graph) -> Tuple[int]:
+def find_isomorphism(g:Graph, s:Graph) -> Result:
   # 尝试子图同构匹配；按 label 一致判定节点等价性
   mapping = vf2pp_find_isomorphism(g, s)
   if mapping is None: return None
   return tuple(mapping[i] for i in range(len(mapping)))
 
+def find_isomorphism_rx(g:PyGraph, s:PyGraph) -> Result:
+  # 从大图 g 中枚举出小图 s 的同构子图，找到一个就算成功；按 label 一致判定节点等价性
+  vf2 = graph_vf2_mapping(g, s, node_matcher=(lambda x, y: x == y), subgraph=True)
+  for it in vf2:
+    return [e[0] for e in sorted(it.items(), key=lambda e: e[-1])]
+
 
 def run_from_demo():
-  G = make_graph(
+  G  = make_graph(
     [4, 1, 3, 2, 1],
     [
       (1, 2),
@@ -365,14 +371,16 @@ def run_from_demo():
       (1, 3),
       (2, 4),
       (4, 5),
-    ]
+    ],
+    offset_by_one=True,
   )
   S1 = make_graph(
     [1, 2, 4],
     [
       (1, 2),
       (2, 3),
-    ]
+    ],
+    offset_by_one=True,
   )
   S2 = make_graph(
     [1, 2, 3, 4],
@@ -382,15 +390,14 @@ def run_from_demo():
       (3, 4),
       (1, 4),
       (1, 3),
-    ]
+    ],
+    offset_by_one=True,
   )
-  S_list = [S1, S2]
 
   res = []
-  for i, S in enumerate(S_list, start=1):
+  for i, S in enumerate([S1, S2], start=1):
     f = find_isomorphism(G, S)
     if f: res.append((i, f))
-
   print(len(res))
   for i, f in res:
     print(i, end='')
@@ -398,27 +405,55 @@ def run_from_demo():
       print(f' {x + 1}', end='')
     print()
 
-def run_from_random():
-  from data import get_query_pair
-  def graph_to_nxgraph(graph) -> Graph:
-    a, e = graph
-    g = Graph()
-    for i, it in enumerate(a):
-      g.add_node(i, label=it)
-    for u, v in e:
-      g.add_edge(u, v)
-    return g
+def run_from_random(gid:int=12, n_edges:int=8, log:bool=False) -> bool:
+  if log: print(f'[Run] graph_id={gid}, subgraph_edges={n_edges}')
 
-  G, S_list = get_query_pair()
-  for i, S in enumerate(S_list):
-    g = graph_to_nxgraph(G)
-    s = graph_to_nxgraph(S)
+  G, S_list = get_query_pair(gid, n_edges)
 
+  ts_sum = 0.0
+  results_nx = []
+  found_nx = []
+  for i, S in enumerate(S_list, start=1):
+    g = make_graph(*G)
+    s = make_graph(*S)
+    ts_start = time()
     f = find_isomorphism(g, s)
-    if f:
-      print(f'[{i + 1}] ' + ' '.join(str(x + 1) for x in f))
+    ts_sum += time() - ts_start
+    results_nx.append(f)
+    if f: found_nx.append(i) 
+  if log: print(f'>> [NetworkxImpl] time cost: {ts_sum:.3f}')
+
+  ts_sum = 0.0
+  results_rx = []
+  found_rx = []
+  for i, S in enumerate(S_list, start=1):
+    g = to_rx(make_graph(*G))
+    s = to_rx(make_graph(*S))
+    ts_start = time()
+    f = find_isomorphism_rx(g, s)
+    ts_sum += time() - ts_start
+    results_rx.append(f)
+    if f: found_rx.append(i)
+  if log: print(f'>> [Rustworkx] time cost: {ts_sum:.3f}')
+
+  chk = found_nx == found_rx
+
+  if log and not chk:
+    print('>> check FAILED! :/')
+    print(f'   found_nx ({len(found_nx)}):', found_nx)
+    print(f'   found_rx ({len(found_rx)}):', found_rx)
+    print()
+
+  return chk
 
 
 if __name__ == '__main__':
-  #run_from_demo()
-  run_from_random()
+  pbar = tqdm(total=TARGET_GRAPHS_LEN * len(QUERY_GRAPH_EDGES))
+  ok = 0
+  # 选 1 张主图 (共10000张)
+  for gid in range(TARGET_GRAPHS_LEN):
+    # 跑各种边数的模式子图，各1000个模式
+    for n_edges in QUERY_GRAPH_EDGES:
+      ok += run_from_random(gid, n_edges, log=False)
+      pbar.update()
+      pbar.set_postfix({'ok': ok, 'sr': ok / pbar.n})
