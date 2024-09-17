@@ -13,8 +13,12 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 
 ⚪ run
 
-- `pip install -r requirements.txt`
 - `python main.py`
+
+⚪ run benchmark
+
+- `pip install -r requirements_dev.txt`
+- `python main_benchmark.py`
 
 
 #### refenrence

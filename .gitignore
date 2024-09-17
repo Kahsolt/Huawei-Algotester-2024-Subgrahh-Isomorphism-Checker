@@ -10,10 +10,8 @@ thesis/*
 repo/*
 !repo/*.cmd
 
-# generated
-gen/
-out/
+# submit
+*.zip
 
-# logs
-log/
-*.log
+# lprof
+*.lprof
