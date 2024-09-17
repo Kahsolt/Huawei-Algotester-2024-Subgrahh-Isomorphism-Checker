@@ -2,6 +2,11 @@
 # Author: Armit
 # Create Time: 2024/09/17 
 
+from time import time_ns
+ts_start = time_ns()
+TIME_LIMIT = 59   # s
+TTL = ts_start + int(TIME_LIMIT * 10**9)  # ns
+
 from sys import stdin
 from collections import defaultdict
 from typing import List, Tuple, NamedTuple, Set, Dict, Union
@@ -309,6 +314,9 @@ if __name__ == '__main__':
   k = int(stdin.readline())
   res: List[Result] = []
   for i in range(1, 1+k):
+    if time_ns() > TTL:
+      break
+
     s = read_graph()
     f = find_isomorphism(g, s)
     if f: res.append((i, f))
