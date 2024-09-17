@@ -64,7 +64,7 @@ def _cache_graphDB_data(n_edges=None):
       assert len(QUERY_GRAPHS[n_edges]) == QUERY_GRAPHS_LEN
 
 def get_query_pair(target:int=None, n_edges:int=None) -> Tuple[Graph, List[Graph]]:
-  target = target or random.randrange(TARGET_GRAPHS_LEN)
+  target = random.randrange(TARGET_GRAPHS_LEN) if target is None else target
   assert 0 <= target < TARGET_GRAPHS_LEN
   _cache_graphDB_data()
   g = TARGET_GRAPHS[target]

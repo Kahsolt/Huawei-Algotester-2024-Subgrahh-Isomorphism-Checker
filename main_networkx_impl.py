@@ -57,14 +57,19 @@ class GraphParameters(NamedTuple):
 class State(NamedTuple):
   mapping: Dict[int, int]           # subgraph (u) -> graph (v)
   reverse_mapping: Dict[int, int]   # graph (v) -> subgraph (u)
-  T1: Set[int]
-  T1_in: Set[int]
-  T1_tilde: Set[int]
-  T1_tilde_in: Set[int]
+  T1: Set[int]          # Ti contains uncovered neighbors of covered nodes from Gi, i.e. nodes that are not in the mapping, but are neighbors of nodes that are (the frontiers)
+  T1_tilde: Set[int]    # Ti_out contains all the nodes from Gi, that are neither in the mapping nor in Ti
   T2: Set[int]
-  T2_in: Set[int]
   T2_tilde: Set[int]
-  T2_tilde_in: Set[int]
+
+def vf2pp_check_isomorphism(graph:Graph, subgraph:Graph, mapping:Mapping) -> bool:
+  for u, u_lbl in enumerate(subgraph.labels):
+    v = mapping[u]
+    if u_lbl != graph.labels[v]:
+      return False
+    if not {mapping[e] for e in subgraph[u]}.issubset(graph[v]):
+      return False
+  return True
 
 def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Mapping:
   # 初始化图和状态信息 (注意图的编号顺序与论文相反!!)
@@ -83,6 +88,7 @@ def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Mapping:
 
   # 确定最优的子图顶点匹配顺序
   node_order = _matching_order(graph_params)
+  #print('node_order:', node_order)
 
   # 初始化DFS栈
   stack: List[int, Nodes] = []
@@ -108,6 +114,8 @@ def vf2pp_find_isomorphism(graph:Graph, subgraph:Graph) -> Mapping:
         reverse_mapping.pop(popped_node2)
         _restore_Tinout(popped_node1, popped_node2, graph_params, state_params)
       continue
+
+    #print('u -> v:', current_node, '->', candidate)
 
     # 匹配成功
     if not _cut_PT(current_node, candidate, graph_params, state_params):
@@ -136,8 +144,8 @@ def groups_to_accumulated_groups(group:dict) -> Groups:
   group_acc = defaultdict(set)
   for deg in sorted(group):
     nodes = group[deg]
-    for v in group_acc.values():
-      v.update(nodes)
+    for d in range(deg, 0, -1):
+      group_acc[d].update(nodes)
     group_acc[deg] = nodes
   return group_acc
 
@@ -171,20 +179,16 @@ def _initialize_parameters(G1:Graph, G2:Graph, G1_degree:Degrees, G2_degree:Degr
     G2_nodes_cover_degree,
   )
 
-  state_params = State(
+  state = State(
     {},
     {},
-    set(),
     set(),
     set(range(G1.n)),
     set(),
-    set(),
-    set(),
     set(range(G2.n)),
-    set(),
   )
 
-  return graph_params, state_params
+  return graph_params, state
 
 def _matching_order(graph_params:GraphParameters) -> Nodes:
   G1, _, G1_labels, _, _, nodes_of_G2Labels, _, _ = graph_params
@@ -227,7 +231,7 @@ def _matching_order(graph_params:GraphParameters) -> Nodes:
 
 def _find_candidates(u:int, graph_params:GraphParameters, state:State, G1_degree:Degrees):
   G1, G2, G1_labels, _, _, nodes_of_G2Labels, _, G2_nodes_cover_degree = graph_params
-  mapping, reverse_mapping, _, _, _, _, _, _, T2_tilde, _ = state
+  mapping, reverse_mapping, _, _, _, T2_tilde = state
 
   # 节点 u 的一些近邻已在映射中？
   covered_neighbors = [nbr for nbr in G1[u] if nbr in mapping]
@@ -257,29 +261,28 @@ def _find_candidates(u:int, graph_params:GraphParameters, state:State, G1_degree
 
 def _cut_PT(u:int, v:int, graph_params:GraphParameters, state:State):
   G1, G2, G1_labels, G2_labels, _, _, _, _ = graph_params
-  _, _, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
+  _, _, T1, _, T2, _ = state
 
+  # 节点 u 和 v 的近邻的标签计数
   u_labels_successors = groups({n1: G1_labels[n1] for n1 in G1[u]})
   v_labels_successors = groups({n2: G2_labels[n2] for n2 in G2[v]})
 
-  # 小图节点 u 的邻居标签必须被所配大图节点 v 的邻居标签覆盖
-  # if the neighbors of u, do not have the same labels as those of v, NOT feasible.
+  # 小图节点 u 的邻居标签必须被所配大图节点 v 的邻居标签覆盖 (是否存在此标签)
   if not set(u_labels_successors).issubset(v_labels_successors):
     return True
 
   # 小图节点 u 的邻居数量必须被所配大图节点 v 的邻居数量覆盖
   for label, G1_nbh in u_labels_successors.items():
+    # 对于同一个标签label，两个图上的近邻集 G1_nbh 和 G2_nbh
     G2_nbh = v_labels_successors[label]
     if len(T1.intersection(G1_nbh)) > len(T2.intersection(G2_nbh)):
-      return True
-    if len(T1_tilde.intersection(G1_nbh)) > len(T2_tilde.intersection(G2_nbh)):
       return True
 
   return False
 
 def _update_Tinout(new_node1:int, new_node2:int, graph_params:GraphParameters, state:State):
   G1, G2, _, _, _, _, _, _ = graph_params
-  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
+  mapping, reverse_mapping, T1, T1_tilde, T2, T2_tilde = state
 
   uncovered_successors_G1 = {succ for succ in G1[new_node1] if succ not in mapping}
   uncovered_successors_G2 = {succ for succ in G2[new_node2] if succ not in reverse_mapping}
@@ -298,7 +301,7 @@ def _update_Tinout(new_node1:int, new_node2:int, graph_params:GraphParameters, s
 def _restore_Tinout(popped_node1:int, popped_node2:int, graph_params:GraphParameters, state:State):
   # If the node we want to remove from the mapping, has at least one covered neighbor, add it to T1.
   G1, G2, _, _, _, _, _, _ = graph_params
-  mapping, reverse_mapping, T1, _, T1_tilde, _, T2, _, T2_tilde, _ = state
+  mapping, reverse_mapping, T1, T1_tilde, T2, T2_tilde = state
 
   is_added = False
   for neighbor in G1[popped_node1]:
@@ -352,11 +355,12 @@ def find_isomorphism(g:Graph, s:Graph) -> Result:
   # 尝试子图同构匹配；按 label 一致判定节点等价性
   mapping = vf2pp_find_isomorphism(g, s)
   if mapping is None: return None
+  assert vf2pp_check_isomorphism(g, s, mapping)
   return tuple(mapping[i] for i in range(len(mapping)))
 
 def find_isomorphism_rx(g:PyGraph, s:PyGraph) -> Result:
   # 从大图 g 中枚举出小图 s 的同构子图，找到一个就算成功；按 label 一致判定节点等价性
-  vf2 = graph_vf2_mapping(g, s, node_matcher=(lambda x, y: x == y), subgraph=True)
+  vf2 = graph_vf2_mapping(g, s, node_matcher=(lambda x, y: x == y), subgraph=True, induced=False)
   for it in vf2:
     return [e[0] for e in sorted(it.items(), key=lambda e: e[-1])]
 
@@ -409,12 +413,13 @@ def run_from_random(gid:int=12, n_edges:int=8, log:bool=False) -> bool:
   if log: print(f'[Run] graph_id={gid}, subgraph_edges={n_edges}')
 
   G, S_list = get_query_pair(gid, n_edges)
+  g = make_graph(*G)
+  g_rx = to_rx(g)
 
   ts_sum = 0.0
   results_nx = []
   found_nx = []
   for i, S in enumerate(S_list, start=1):
-    g = make_graph(*G)
     s = make_graph(*S)
     ts_start = time()
     f = find_isomorphism(g, s)
@@ -427,10 +432,9 @@ def run_from_random(gid:int=12, n_edges:int=8, log:bool=False) -> bool:
   results_rx = []
   found_rx = []
   for i, S in enumerate(S_list, start=1):
-    g = to_rx(make_graph(*G))
-    s = to_rx(make_graph(*S))
+    s_rx = to_rx(make_graph(*S))
     ts_start = time()
-    f = find_isomorphism_rx(g, s)
+    f = find_isomorphism_rx(g_rx, s_rx)
     ts_sum += time() - ts_start
     results_rx.append(f)
     if f: found_rx.append(i)
@@ -451,9 +455,9 @@ if __name__ == '__main__':
   pbar = tqdm(total=TARGET_GRAPHS_LEN * len(QUERY_GRAPH_EDGES))
   ok = 0
   # 选 1 张主图 (共10000张)
-  for gid in range(TARGET_GRAPHS_LEN):
+  for gid in [233]:     # range(TARGET_GRAPHS_LEN)
     # 跑各种边数的模式子图，各1000个模式
     for n_edges in QUERY_GRAPH_EDGES:
-      ok += run_from_random(gid, n_edges, log=False)
+      ok += run_from_random(gid, n_edges, log=True)
       pbar.update()
       pbar.set_postfix({'ok': ok, 'sr': ok / pbar.n})
