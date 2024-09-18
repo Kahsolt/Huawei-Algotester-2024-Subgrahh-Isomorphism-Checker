@@ -12,7 +12,7 @@ from data import QUERY_GRAPH_EDGES, TARGET_GRAPHS_LEN, get_query_pair
 # ↓↓ rustworkx baseline
 from rustworkx import PyGraph, graph_vf2_mapping
 # ↓↓ networkx impl. migrated
-from main import Graph, find_isomorphism, Labels, Edges, Result
+from main_networkx_impl import Graph, vf2pp_find_isomorphism, Labels, Edges, Result
 # ↓↓ rustworkx impl. migrated
 from main_rustworkx_impl import StableGraph, Vf2Algorithm
 
@@ -31,12 +31,6 @@ def to_rx(graph:Graph) -> PyGraph:
     g.add_edge(node_ids[u], node_ids[v], 1.0)
   return g
 
-def find_isomorphism_rx(g:PyGraph, s:PyGraph) -> Result:
-  # 从大图 g 中枚举出小图 s 的同构子图，找到一个就算成功；按 label 一致判定节点等价性
-  vf2 = graph_vf2_mapping(g, s, node_matcher=(lambda x, y: x == y), subgraph=True, induced=False)
-  for it in vf2:
-    return [e[0] for e in sorted(it.items(), key=lambda e: e[-1])]
-
 def to_rx2py(graph:Graph) -> StableGraph:
   g = StableGraph(graph.n, graph.m)
   node_ids: List[int] = []
@@ -45,6 +39,19 @@ def to_rx2py(graph:Graph) -> StableGraph:
   for u, v in graph.edges:
     g.add_edge(node_ids[u], node_ids[v])
   return g
+
+def find_isomorphism(g:Graph, s:Graph) -> Result:
+  # 尝试子图同构匹配；按 label 一致判定节点等价性
+  mapping = vf2pp_find_isomorphism(g, s)
+  if mapping is None: return None
+  #assert vf2pp_check_isomorphism(g, s, mapping)
+  return tuple(mapping[i] for i in range(len(mapping)))
+
+def find_isomorphism_rx(g:PyGraph, s:PyGraph) -> Result:
+  # 从大图 g 中枚举出小图 s 的同构子图，找到一个就算成功；按 label 一致判定节点等价性
+  vf2 = graph_vf2_mapping(g, s, node_matcher=(lambda x, y: x == y), subgraph=True, induced=False)
+  for it in vf2:
+    return [e[0] for e in sorted(it.items(), key=lambda e: e[-1])]
 
 def find_isomorphism_rx2py(g:StableGraph, s:StableGraph) -> Result:
   mapping = Vf2Algorithm(g, s).next_vf2()
