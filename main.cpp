@@ -130,6 +130,8 @@ SubGraph G1; Graph G2;
 set<int> nodes_of_G1Labels[1 + MAX_L];
 set<int> nodes_of_G2Labels[1 + MAX_L];
 int label_rarity_G2[1 + MAX_L];
+map<int, set<int>> nodes_of_G1Degrees;
+map<int, set<int>> nodes_of_G2Degrees;
 // State
 Frame S[MAX_Ni]; int Sp;
 int node_order[MAX_Ni];
@@ -141,6 +143,8 @@ set<int> u_labels_successors[1 + MAX_L];
 set<int> v_labels_successors[1 + MAX_L];
 // Result
 int ans[MAX_M][1 + MAX_Ni], n_ans = 0;  // prefixed by subgraph_idx
+
+bool DEBUG = false;
 
 void debug_node_order() {
   printf("node_order: ");
@@ -158,6 +162,16 @@ void debug_set(set<int> &s, char* name) {
   printf("set %s: {", name);
   for (auto it : s)
     printf("%d ", it);
+  printf("}\n");
+}
+void debug_map_set(map<int, set<int>> &ms, char* name) {
+  printf("map-set %s: {", name);
+  for (auto it : ms) {
+    printf("%d {", it.first);
+    for (auto e : it.second)
+      printf("%d ", e);
+    printf("}");
+  }
   printf("}\n");
 }
 void debug_frame(Frame &frm) {
@@ -182,9 +196,19 @@ inline void read_graph() {
     G2.neighbors[u].insert(v);
     G2.neighbors[v].insert(u);
   }
+  if (DEBUG) debug_array(G2.degree, G2.n, "G2.degree");
   // setup
   for (int l = 1; l <= MAX_L; l++)
     label_rarity_G2[l] = nodes_of_G2Labels[l].size();
+  if (DEBUG) debug_array(label_rarity_G2, 1+MAX_L, "label_rarity_G2");
+  for (int i = 0; i < n; i++) {
+    int D = G2.degree[i];
+    if (nodes_of_G2Degrees.find(D) == nodes_of_G2Degrees.end()) // not found
+      nodes_of_G2Degrees[D] = {i};
+    else
+      nodes_of_G2Degrees[D].insert(i);
+  }
+  if (DEBUG) debug_map_set(nodes_of_G2Degrees, "nodes_of_G2Degrees");
 }
 inline void read_subgraph() {
   int n, k, u, v, l;
@@ -205,14 +229,26 @@ inline void read_subgraph() {
     G1.neighbors[u].insert(v);
     G1.neighbors[v].insert(u);
   }
+  if (DEBUG) debug_array(G1.degree, G1.n, "G1.degree");
   // reset
   memset(mapping, 0xFF, sizeof(int) * n); // INVALID = -1
   memset(reverse_mapping, 0xFF, sizeof(reverse_mapping)); // INVALID = -1
   memset(T1, 0x00, sizeof(T1));
   memset(T2, 0x00, sizeof(T2));
+  nodes_of_G1Degrees.clear();
+  for (int i = 0; i < n; i++) {
+    int D = G1.degree[i];
+    if (nodes_of_G1Degrees.find(D) == nodes_of_G1Degrees.end()) // not found
+      nodes_of_G1Degrees[D] = {i};
+    else
+      nodes_of_G1Degrees[D].insert(i);
+  }
+  if (DEBUG) debug_map_set(nodes_of_G1Degrees, "nodes_of_G1Degrees");
 }
 inline void write_ans() {
-  write(n_ans); putchar(10);
+  if (!n_ans) putchar(48);
+  else write(n_ans);
+  putchar(10);
   for (int j = 0; j < n_ans; j++) {
     int* p = ans[j];
     while (*p >= 0) {  // INVALID = -1
@@ -256,12 +292,12 @@ inline void _make_order() {
   int tmp;
 
   while (!V1_unordered.empty()) {
-    int max_rarity = G1.n;
+    int max_rarity = G2.n;
     for (auto n : V1_unordered)
       max_rarity = min(max_rarity, label_rarity[G1.labels[n]]);
-    printf("max_rarity: %d\n", max_rarity);
+    if (DEBUG) printf("max_rarity: %d\n", max_rarity);
     int sel_node = -1, max_deg = -1;
-    for (auto n : V1_unordered)
+    for (auto n : V1_unordered) {
       if (label_rarity[G1.labels[n]] == max_rarity) { // max rarity
         tmp = G1.degree[n];
         if (tmp > max_deg) {  // max deg
@@ -269,7 +305,8 @@ inline void _make_order() {
           sel_node = n;
         }
       }
-    printf("sel_node: %d\n", sel_node);
+    }
+    if (DEBUG) printf("max_node: %d\n", sel_node);
 
     bool visited[MAX_Ni]; memset(visited, 0x00, sizeof(visited));
     visited[sel_node] = true;
@@ -286,7 +323,7 @@ inline void _make_order() {
         int max_used_degree = -1;
         for (auto n : nodes_to_add)
           max_used_degree = max(max_used_degree, used_degree[n]);
-        printf("max_used_degree: %d\n", max_used_degree);
+        if (DEBUG) printf("max_used_degree: %d\n", max_used_degree);
         max_used_degree_nodes.clear();
         for (auto n : nodes_to_add)
           if (used_degree[n] == max_used_degree)
@@ -295,13 +332,13 @@ inline void _make_order() {
         int max_degree = -1;
         for (auto n : max_used_degree_nodes)
           max_degree = max(max_degree, G1.degree[n]);
-        printf("max_degree: %d\n", max_degree);
+        if (DEBUG) printf("max_degree: %d\n", max_degree);
         max_degree_nodes.clear();
         for (auto n : max_used_degree_nodes)
           if (G1.degree[n] == max_degree)
             max_degree_nodes.push_back(n);
         // max_rarity
-        int next_node = -1, min_cnt = G1.n;
+        int next_node = -1, min_cnt = G2.n;
         for (auto n : max_degree_nodes) {
           tmp = label_rarity[G1.labels[n]];
           if (tmp < min_cnt) {
@@ -309,7 +346,7 @@ inline void _make_order() {
             next_node = n;
           }
         }
-        printf("next_node: %d\n", next_node);
+        if (DEBUG) printf("next_node: %d\n", next_node);
         // go!
         nodes_to_add.erase(next_node);
         V1_unordered.erase(next_node);
@@ -339,23 +376,27 @@ inline void _make_frame(int u) {
   set<int> &valid_label_nodes = nodes_of_G2Labels[G1.labels[u]];
   set<int> valid_degree_nodes;
   int D = G1.degree[u];
-  for (int i = 0; i <= G1.n; i++)
+  for (int i = 0; i <= G2.n; i++)
     if (G2.degree[i] >= D)
       valid_degree_nodes.insert(i);
 
-  debug_set(covered_neighbors, "covered_neighbors");
-  debug_set(valid_label_nodes, "valid_label_nodes");
-  debug_set(valid_degree_nodes, "valid_degree_nodes");
+  if (DEBUG) {
+    debug_set(covered_neighbors, "covered_neighbors");
+    debug_set(valid_label_nodes, "valid_label_nodes");
+    debug_set(valid_degree_nodes, "valid_degree_nodes");
+  }
 
   set<int> nxt;
   if (covered_neighbors.empty()) {
+    if (DEBUG) printf("case-init\n");
     nxt = valid_label_nodes;  // copy!
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
     intersection_update(nxt, valid_degree_nodes);
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
     difference_update(nxt, reverse_mapping);
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
   } else {
+    if (DEBUG) printf("case-succ\n");
     bool flag = true;
     for (auto nbr : covered_neighbors) {
       if (flag) {
@@ -364,14 +405,20 @@ inline void _make_frame(int u) {
       } else {
         intersection_update(nxt, G2.neighbors[mapping[nbr]]);
       }
+      if (DEBUG) {
+        printf("nbr: %d\n", nbr);
+        printf("mapping[nbr]: %d\n", mapping[nbr]);
+        debug_set(G2.neighbors[mapping[nbr]], "G2.neighbors[mapping[nbr]]");
+        debug_set(nxt, "nxt-i");
+      }
     }
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
     difference_update(nxt, reverse_mapping);
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
     intersection_update(nxt, valid_degree_nodes);
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
     intersection_update(nxt, valid_label_nodes);
-    debug_set(nxt, "nxt");
+    if (DEBUG) debug_set(nxt, "nxt");
   }
   Frame &frm = S[Sp - 1];
   frm.u = u;
@@ -390,10 +437,14 @@ inline bool _cut_PT(int u, int v) {
     v_labels_successors[G2.labels[n2]].insert(n2);
 
   for (int l = 1; l <= MAX_L; l++) {
-    if (u_labels_successors[l].size() > v_labels_successors[l].size())
+    if (u_labels_successors[l].size() && v_labels_successors[l].empty()) {
+      if (DEBUG) printf("cut by size()\n");
       return true;
-    if (count_exist(u_labels_successors[l], T1) > count_exist(v_labels_successors[l], T2))
+    }
+    if (count_exist(u_labels_successors[l], T1) > count_exist(v_labels_successors[l], T2)) {
+      if (DEBUG) printf("cut by count_exist()\n");
       return true;
+    }
   }
   return false;
 }
@@ -435,19 +486,44 @@ inline void _restore_Tinout(int u, int v) {
   }
 }
 
+void check_isomorphism() {
+  for (int u = 0; u < G1.n; u++) {
+    int u_lbl = G1.labels[u];
+    int v = mapping[u];
+    if (u_lbl != G2.labels[v]) {
+      printf("Wrong answer!");
+      exit(-1);
+    }
+    auto X = G2.neighbors[v];
+    for (auto e : G1.neighbors[u]) {
+      if (X.find(mapping[e]) == X.end()) {  // not found
+        printf("Wrong answer!");
+        exit(-1);
+      }
+    }
+  }
+}
 void find_isomorphism(int sgid) {
   for (int l = 1; l <= MAX_L; l++)
     if (nodes_of_G1Labels[l].size() > nodes_of_G2Labels[l].size())
       return;
 
+  //for (auto it : nodes_of_G1Degrees) {
+  //  int D = it.first;
+  //  if (nodes_of_G2Degrees.find(D) == nodes_of_G2Degrees.end()) // not found
+  //    return;
+  //  //if (it.second.size() > nodes_of_G2Degrees[D].size())
+  //  //  return;
+  //}
+
   Sp = 0;  // ptr(node_order/stack), aka. dfs depth 
   _make_order();
-  debug_node_order();
+  if (DEBUG) debug_node_order();
 
   _make_frame(node_order[Sp++]);
   while (Sp) {
     Frame &frm = S[Sp - 1];
-    debug_frame(frm);
+    if (DEBUG) debug_frame(frm);
 
     if (frm.nxt.empty()) { // no more candidates
       Sp--;
@@ -465,18 +541,16 @@ void find_isomorphism(int sgid) {
     int u = frm.u;
     int v = frm.nxt.front(); frm.nxt.pop_front(); // try this new candidate
     bool cut = _cut_PT(u, v);
-    printf("u->v: %d -> %d; cut=%d\n", u, v, cut);
+    if (DEBUG) printf("u->v: %d -> %d; cut=%d\n", u, v, cut);
+
     if (!cut) {
       if (Sp == G1.n) {
         mapping[u] = v;
-        printf("u->v: %d -> %d", u, v);
         int *q = ans[n_ans++];
         *q++ = sgid;  // prefix with subgraph_id
-        printf("sgid: [%d]", sgid);
         for (int i = 0; i < G1.n; i++)
           *q++ = mapping[i];
         *q = -1;      // mark terminal
-        debug_array(ans[n_ans-1], G1.n+2, "ans[n_ans]");
         return;       // well done, exit!
       } else {
         mapping[u] = v;
@@ -490,19 +564,23 @@ void find_isomorphism(int sgid) {
 #pragma endregion
 
 int main() {
+  // debug
+  if(getenv("LOCAL_DEBUG")) DEBUG = true;
   // ttl control
-  time_t ts = time(NULL); // sec
-  time_t ttl = ts + 59;
+  clock_t ts = clock();
+  clock_t ttl = ts + CLOCKS_PER_SEC * 59;
   // process
   read_graph();
   int m = read();
   for (int i = 0; i < m; i++) { // offset at output :)
+    if (clock() >= ttl) break;
     read_subgraph();
     find_isomorphism(i);
-    if (time(NULL) >= ttl) break;
   }
   write_ans();
   // clear buff
   fwrite(obuf, p3 - obuf, 1, stdout);
+  // TIMEIT
+  printf("\nCPP TIME: %.2f\n", float(clock() - ts) / CLOCKS_PER_SEC);
   return 0;
 }

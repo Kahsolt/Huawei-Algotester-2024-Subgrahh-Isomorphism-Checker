@@ -100,9 +100,10 @@ def run(args):
     for _ in tqdm(range(MAX_M)):
       a, e = S = rand_subgraph(*G)
 
-      Gx = VE_to_PyGraph(*G)
-      Sx = VE_to_PyGraph(*S)
-      assert graph_is_subgraph_isomorphic(Gx, Sx, node_matcher=(lambda x, y: x==y), induced=False)
+      if args.check:
+        Gx = VE_to_PyGraph(*G)
+        Sx = VE_to_PyGraph(*S)
+        assert graph_is_subgraph_isomorphic(Gx, Sx, node_matcher=(lambda x, y: x==y), induced=False)
 
       fh.write(f'{len(a)} {len(e)}\n')
       for l in a:
@@ -117,6 +118,7 @@ def run(args):
 if __name__ =='__main__':
   parser = ArgumentParser()
   parser.add_argument('--seed', default=114514, type=int)
+  parser.add_argument('--check', action='store_true', help='sanity check')
   args = parser.parse_args()
 
   random.seed(args.seed)
