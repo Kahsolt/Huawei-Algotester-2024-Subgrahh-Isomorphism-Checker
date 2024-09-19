@@ -17,10 +17,8 @@ from main_networkx_impl import Graph, vf2pp_find_isomorphism, Labels, Edges, Res
 from main_rustworkx_impl import StableGraph, Vf2Algorithm
 
 
-def make_graph(labels:Labels, edges:Edges, offset_by_one:bool=False) -> Graph:
-  if offset_by_one:
-    edges = [(u-1, v-1) for u, v in edges]
-  return Graph(labels, edges)
+def make_graph(labels:Labels, edges:Edges) -> Graph:
+  return Graph(labels, [(u-1, v-1) for u, v in edges])    # offset by one for compute
 
 def to_rx(graph:Graph) -> PyGraph:
   g = PyGraph()
@@ -70,7 +68,6 @@ def run_demo():
       (2, 4),
       (4, 5),
     ],
-    offset_by_one=True,
   )
   S1 = make_graph(
     [1, 2, 4],
@@ -78,7 +75,6 @@ def run_demo():
       (1, 2),
       (2, 3),
     ],
-    offset_by_one=True,
   )
   S2 = make_graph(
     [1, 2, 3, 4],
@@ -89,7 +85,6 @@ def run_demo():
       (1, 4),
       (1, 3),
     ],
-    offset_by_one=True,
   )
 
   res = []

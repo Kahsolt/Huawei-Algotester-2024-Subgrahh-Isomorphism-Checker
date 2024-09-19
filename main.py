@@ -7,7 +7,7 @@ ts_start = time_ns()
 TIME_LIMIT = 60   # s
 TTL = ts_start + int(TIME_LIMIT * 10**9)  # ns
 
-from sys import stdin, stdout
+from sys import stdin, stdout, platform
 from collections import defaultdict
 from typing import List, Tuple, Set, Dict, Union
 
@@ -261,3 +261,7 @@ if __name__ == '__main__':
       stdout.write(str(x + 1))
     stdout.write('\n')
   stdout.flush()
+
+  if platform == 'win32':
+    print()
+    print(f'TIME: {(time_ns() - ts_start) / 10**9:.2f}')

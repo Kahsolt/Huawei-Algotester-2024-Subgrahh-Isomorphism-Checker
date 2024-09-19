@@ -2,6 +2,9 @@
 # Author: Armit
 # Create Time: 2024/09/03 
 
+# get & cvt graphDB data
+
+import sys
 import random
 from pathlib import Path
 from typing import Tuple, List, Dict
@@ -9,6 +12,7 @@ from typing import Tuple, List, Dict
 BASE_PATH = Path(__file__).parent
 DATA_PATH = BASE_PATH / 'data'
 DATA_GRAPHDB_PATH = DATA_PATH / 'graphDB'
+DATA_GRAPHDB_CVT_PATH = DATA_PATH / 'graphDB_cvt'
 
 Vertex = int
 Label = int
@@ -34,7 +38,7 @@ def _load_graphDB_file(fp:Path) -> List[Graph]:
       if line.startswith('v'):
         lables.append(int(line.split(' ')[2]))
       elif line.startswith('e'):
-        edges.append(tuple(int(e) for e in line.split(' ')[1:3]))
+        edges.append(tuple(int(e) + 1 for e in line.split(' ')[1:3]))   # offset by one for storage
       else:
         raise ValueError(f'>> Error parse line: {line}')
     graphs.append((lables, edges))
@@ -74,7 +78,44 @@ def get_query_pair(target:int=None, n_edges:int=None) -> Tuple[Graph, List[Graph
   return g, s_list
 
 
+# 从 graphDB 转出测试样例: 选 1 张主图搭配所有的 6000 张模式子图 
+def cvt_graphDB(gids):
+  DATA_GRAPHDB_CVT_PATH.mkdir(exist_ok=True)
+  for gid in gids:
+    fp = DATA_GRAPHDB_CVT_PATH / f'{gid}.txt'
+    if fp.exists():
+      print(f'>> file {fp.relative_to(BASE_PATH)} exists, skip data_cvt :)')
+      continue
+
+    print(f'>> file saved to {fp}')
+    with open(fp, 'w', encoding='ascii') as fh:
+      # graph
+      G, S_list = get_query_pair(gid, None)
+
+      a, e = G
+      fh.write(f'{len(a)} {len(e)}\n')
+      for l in a:
+        fh.write(f'{min(max(l, 1), 10)} ')  # label refix
+      fh.write('\n')
+      for u, v in e:
+        fh.write(f'{u+1} {v+1}\n')          # node_id refix
+
+      # subgraph
+      fh.write(f'{len(QUERY_GRAPH_EDGES) * len(S_list)}\n')
+      for n_edge in QUERY_GRAPH_EDGES:
+        _, S_list = get_query_pair(None, n_edge)
+
+        for a, e in S_list:
+          fh.write(f'{len(a)} {len(e)}\n')
+          for l in a:
+            fh.write(f'{min(max(l, 1), 10)} ')  # label refix
+          fh.write('\n')
+          for u, v in e:
+            fh.write(f'{u+1} {v+1}\n')          # node_id refix
+
+
 if __name__ == '__main__':
-  g, s_list = get_query_pair()
-  print('g:', g)
-  print(f's_list({len(s_list)}):', s_list[0])
+  # 若不指定主图 id，则默认生成前 10 张
+  gids = [int(sys.argv[1])] if len(sys.argv) >= 2 else range(10)
+
+  cvt_graphDB(gids)
