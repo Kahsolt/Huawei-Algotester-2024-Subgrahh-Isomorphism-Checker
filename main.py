@@ -4,7 +4,7 @@
 
 from time import time_ns
 ts_start = time_ns()
-TIME_LIMIT = 60   # s
+TIME_LIMIT = 59   # s
 TTL = ts_start + int(TIME_LIMIT * 10**9)  # ns
 
 from sys import stdin, stdout, platform
@@ -43,8 +43,6 @@ G1: Graph
 G2: Graph
 nodes_of_G1Labels: Groups
 nodes_of_G2Labels: Groups
-G1_nodes_cover_degree: Groups
-G2_nodes_cover_degree: Groups
 label_rarity_G2: Dict[int, int]
 # State
 mapping: Dict[int, int]           # subgraph (u) -> graph (v)
@@ -55,8 +53,6 @@ T2: Set[int]
 def vf2pp_find_isomorphism() -> Mapping:
   # 剪枝检查: 大图覆盖子图标签
   if not set(nodes_of_G1Labels).issubset(nodes_of_G2Labels): return
-  # 剪枝检查: 大图覆盖子图度数计数
-  if not set(G1_nodes_cover_degree).issubset(G2_nodes_cover_degree): return
 
   # 确定最优的子图顶点匹配顺序
   node_order = _matching_order()
@@ -82,7 +78,9 @@ def vf2pp_find_isomorphism() -> Mapping:
         _restore_Tinout(popped_node1, popped_node2)
       continue
 
-    if not _cut_PT(current_node, candidate):
+    cut = _cut_PT(current_node, candidate)
+
+    if not cut:
       if len(mapping) == G1.n - 1:
         mapping[current_node] = candidate
         return mapping
@@ -99,15 +97,6 @@ def groups(many_to_one:Union[dict, list]) -> Groups:
   for v, k in (many_to_one.items() if isinstance(many_to_one, dict) else enumerate(many_to_one)):
     one_to_many[k].add(v)
   return dict(one_to_many)
-
-def groups_to_accumulated_groups(group:dict) -> Groups:
-  group_acc = defaultdict(set)
-  for deg in sorted(group):
-    nodes = group[deg]
-    for d in range(deg, 0, -1):
-      group_acc[d].update(nodes)
-    group_acc[deg] = nodes
-  return group_acc
 
 def _matching_order():
   # 大图各label计数
@@ -161,7 +150,11 @@ def _find_candidates(u:int):
   # 匹配子图节点 u 标签的大图节点 v
   valid_label_nodes = nodes_of_G2Labels[G1.labels[u]]
   # 覆盖子图节点 u 度数的大图节点 v
-  valid_degree_nodes = G2_nodes_cover_degree[G1.degree[u]]
+  valid_degree_nodes = []
+  D = G1.degree[u]
+  for i in range(G2.n):
+    if G2.degree[i] >= D:
+      valid_degree_nodes.append(i)
   # 初始情况，从 G2 全图选匹配点
   if not covered_neighbors:
     candidates = set(valid_label_nodes)   # 与子图节点 u 标签一致的大图节点 v
@@ -230,7 +223,6 @@ def read_graph() -> Graph:
 if __name__ == '__main__':
   G2 = read_graph()
   nodes_of_G2Labels = groups(G2.labels)
-  G2_nodes_cover_degree = groups_to_accumulated_groups(groups(G2.degree))
   label_rarity_G2 = {label: len(nodes) for label, nodes in nodes_of_G2Labels.items()}
 
   k = int(stdin.readline())
@@ -241,7 +233,6 @@ if __name__ == '__main__':
 
     G1 = read_graph()
     nodes_of_G1Labels = groups(G1.labels)
-    G1_nodes_cover_degree = groups_to_accumulated_groups(groups(G1.degree))
     mapping = {}
     reverse_mapping = {}
     T1 = set()
