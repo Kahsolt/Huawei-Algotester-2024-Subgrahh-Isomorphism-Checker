@@ -7,8 +7,10 @@ DEBUG = os.getenv('LOCAL_DEBUG')
 
 from time import time_ns
 ts_start = time_ns()
-TIME_LIMIT = 59   # s
+TIME_LIMIT = 59.9   # s
 TTL = ts_start + int(TIME_LIMIT * 10**9)  # ns
+TS_query: int = None
+TTL_query: int = None
 
 from sys import stdin, stdout, platform
 from collections import defaultdict
@@ -79,6 +81,8 @@ def vf2pp_find_isomorphism() -> Mapping:
   matching_node = 1
   # 开始DFS!!
   while stack:
+    ts = time_ns()
+    if ts > TTL or ts > TTL_query: return
     current_node, candidate_nodes = stack[-1]
 
     try:
@@ -277,10 +281,12 @@ if __name__ == '__main__':
   if DEBUG: print('label_rarity_G2:', label_rarity_G2)
 
   k = int(stdin.readline())
+  TS_query = (TTL - ts_start) // k
   res: List[Result] = []
   for i in range(1, 1+k):
     if time_ns() > TTL: break
 
+    TTL_query = ts_start + TS_query * i
     G1 = read_graph()
     if DEBUG: print('G1.degree:', G1.degree)
     nodes_of_G1Labels = groups(G1.labels)

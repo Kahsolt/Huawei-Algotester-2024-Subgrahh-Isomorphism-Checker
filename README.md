@@ -16,13 +16,15 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 
 | lang | score | comment |
 | :-: | :-: | :-: |
-| python | 5741489 | rt = 60s (G2优化处理前) |
-| python | 6842356 | rt = 59s~60s|
-| python | 6945793 | rt = 45s (wtf??) |
-| python | 6903400 | rt = 30s |
-| python | 6485614 | rt = 15s |
-| cpp    |   36629 | rt = 45s |
-| cpp    |   27305 | rt = 30s |
+| python |  7270649 | rt = 59s |
+| python |  7288572 | rt = 59.5s |
+| python |  7288572 | rt = 59.9s |
+| python | 16998016 | rt = 59.9s (`ts_query=TTL//50000`) |
+| python | 19914172 | rt = 59.9s (`ts_query=TTL//k*0.95`) |
+| python | 20497856 | rt = 59.9s (`ts_query=TTL//k`) |
+| python | 17373889 | rt = 59.9s (`ts_query=TTL//k*2`) |
+| cpp    |    36629 | rt = 45s |
+| cpp    |    27305 | rt = 30s |
 
 
 ### Quickstart
