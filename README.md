@@ -19,7 +19,10 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 | python |  7270649 | rt = 59s |
 | python |  7288572 | rt = 59.5s |
 | python |  7288572 | rt = 59.9s |
-| python | 16998016 | rt = 59.9s (`ts_query=TTL//50000`) |
+| python | 15913500 | rt = 59.9s (`ts_query=TTL//k`), order=naive |
+| python | 13280564 | rt = 59.9s (`ts_query=TTL//k`), order=degree |
+| python | 13336066 | rt = 59.9s (`ts_query=TTL//k`), order=1st_only |
+| python | 20681433 | rt = 59.9s (`ts_query=TTL//k`), order=vf2pp_no_conn |
 | python | 19914172 | rt = 59.9s (`ts_query=TTL//k*0.95`) |
 | python | 20497856 | rt = 59.9s (`ts_query=TTL//k`) |
 | python | 17373889 | rt = 59.9s (`ts_query=TTL//k*2`) |

@@ -40,35 +40,34 @@ class Graph:
       self.adj[u].add(v)
       self.adj[v].add(u)
 
+    self.nodes_of_labels: Groups = groups(self.labels)
+    self.nodes_cover_degree: Groups = groups_to_accumulated_groups(groups(self.degree))
+
   def __getitem__(self, i:int):
     return self.adj[i]
 
 # Info
 G1: Graph
 G2: Graph
-nodes_of_G1Labels: Groups
-nodes_of_G2Labels: Groups
-G1_nodes_cover_degree: Groups
-G2_nodes_cover_degree: Groups
 label_rarity_G2: Dict[int, int]
 # State
-mapping: Dict[int, int]           # subgraph (u) -> graph (v)
-reverse_mapping: Dict[int, int]   # graph (v) -> subgraph (u)
-T1: Set[int]          # Ti contains uncovered neighbors of covered nodes from Gi, i.e. nodes that are not in the mapping, but are neighbors of nodes that are (the frontiers)
-T2: Set[int]
+mapping: Dict[int, int] = {}           # subgraph (u) -> graph (v)
+reverse_mapping: Dict[int, int] = {}   # graph (v) -> subgraph (u)
+T1: Set[int] = set()          # Ti contains uncovered neighbors of covered nodes from Gi, i.e. nodes that are not in the mapping, but are neighbors of nodes that are (the frontiers)
+T2: Set[int] = set()
 
 def vf2pp_find_isomorphism() -> Mapping:
   # 剪枝检查: 大图覆盖子图标签 (存在性)
-  if not set(nodes_of_G1Labels).issubset(nodes_of_G2Labels): return
+  if not set(G1.nodes_of_labels).issubset(G2.nodes_of_labels): return
   # 剪枝检查: 大图覆盖子图标签 (计数)，不涨分
-  #for lbl, G1_nodes in nodes_of_G1Labels.items():
-  #  if len(G1_nodes) > len(nodes_of_G2Labels[lbl]):
+  #for lbl, G1_nodes in G1.nodes_of_Labels.items():
+  #  if len(G1_nodes) > len(G2.nodes_of_Labels[lbl]):
   #    return
   # 剪枝检查: 大图覆盖子图度数 (存在性)
-  if not set(G1_nodes_cover_degree).issubset(G2_nodes_cover_degree): return
+  if not set(G1.nodes_cover_degree).issubset(G2.nodes_cover_degree): return
   # 剪枝检查: 大图覆盖子图度数 (计数)，不涨分
-  #for deg, G1_nodes in G1_nodes_cover_degree.items():
-  #  if len(G1_nodes) > len(G2_nodes_cover_degree[deg]):
+  #for deg, G1_nodes in G1.nodes_cover_degree.items():
+  #  if len(G1_nodes) > len(G2.nodes_cover_degree[deg]):
   #    return
 
   # 确定最优的子图顶点匹配顺序
@@ -128,7 +127,21 @@ def groups_to_accumulated_groups(group:dict) -> Groups:
     group_acc[deg] = nodes
   return group_acc
 
-def _matching_order():
+def _matching_order_naive():
+  return list(range(G1.n))
+
+def _matching_order_degree():
+  return sorted([n for n in range(G1.n)], key=lambda e: G1.degree[e], reverse=True)
+
+def _matching_order_1st_only():
+  max_rarity = min(label_rarity_G2.values())
+  if DEBUG: print('max_rarity:', max_rarity)
+  rarest_nodes = (n for n in range(G1.n) if label_rarity_G2[G1.labels[n]] == max_rarity)
+  max_node = max(rarest_nodes, key=lambda e: G1.degree[e])
+  if DEBUG: print('max_node:', max_node)
+  return [max_node] + sorted([n for n in range(G1.n) if n != max_node], key=lambda e: G1.degree[e], reverse=True)
+
+def _matching_order_vf2pp():
   # 大图各label计数
   label_rarity = label_rarity_G2.copy()
   # 子图未排序节点 & 各节点已征用度数 (拟连通度)    # TODO: 改为百分比(?)
@@ -179,15 +192,61 @@ def _matching_order():
       current_layer = next_layer
   return node_order
 
+def _matching_order_vf2pp_no_conn():
+  # 大图各label计数
+  label_rarity = label_rarity_G2.copy()
+  # 子图未排序节点
+  V1_unordered = set(range(G1.n))
+  # 子图已排序节点
+  node_order: Nodes = []
+  # 排序！
+  while V1_unordered:
+    # 未排序节点中label最罕见的节点
+    max_rarity = min(label_rarity[G1.labels[x]] for x in V1_unordered)
+    if DEBUG: print('max_rarity:', max_rarity)
+    rarest_nodes = (n for n in V1_unordered if label_rarity[G1.labels[n]] == max_rarity)
+    # 其中度最大的一个
+    max_node = max(rarest_nodes, key=lambda e: G1.degree[e])
+    if DEBUG: print('max_node:', max_node)
+    # 宽搜处理整个连通域
+    current_layer = [max_node]
+    visited = {max_node}
+    while current_layer:
+      nodes_to_add = current_layer.copy()
+      while nodes_to_add:
+        # 其中度最大的的节点
+        max_degree = max(G1.degree[n] for n in nodes_to_add)
+        if DEBUG: print('max_degree:', max_degree)
+        max_degree_nodes = (n for n in nodes_to_add if G1.degree[n] == max_degree)
+        # 其中最label最罕见一个
+        next_node = min(max_degree_nodes, key=lambda x: label_rarity[G1.labels[x]])
+        if DEBUG: print('next_node:', next_node)
+        # 选定，加入排序！
+        nodes_to_add.remove(next_node)
+        V1_unordered.discard(next_node)
+        node_order.append(next_node)
+        # 更新辅助统计信息
+        label_rarity[G1.labels[next_node]] -= 1
+      next_layer: Nodes = []
+      for node in current_layer:
+        for child in G1[node]:
+          if child not in visited:
+            visited.add(child)
+            next_layer.append(child)
+      current_layer = next_layer
+  return node_order
+
+_matching_order = _matching_order_vf2pp
+
 def _find_candidates(u:int):
   # 节点 u 的一些近邻已在映射中？
   covered_neighbors = [nbr for nbr in G1[u] if nbr in mapping]
   if DEBUG: print('covered_neighbors:', covered_neighbors)
   # 匹配子图节点 u 标签的大图节点 v
-  valid_label_nodes = nodes_of_G2Labels[G1.labels[u]]
+  valid_label_nodes = G2.nodes_of_labels[G1.labels[u]]
   if DEBUG: print('valid_label_nodes:', valid_label_nodes)
   # 覆盖子图节点 u 度数的大图节点 v
-  valid_degree_nodes = G2_nodes_cover_degree[G1.degree[u]]
+  valid_degree_nodes = G2.nodes_cover_degree[G1.degree[u]]
   if DEBUG: print('valid_degree_nodes:', valid_degree_nodes)
   # 初始情况，从 G2 全图选匹配点
   if not covered_neighbors:
@@ -270,38 +329,7 @@ def read_graph() -> Graph:
   e = [tuple(int(x) - 1 for x in stdin.readline().split()) for _ in range(m)]
   return Graph(a, e)
 
-
-if __name__ == '__main__':
-  G2 = read_graph()
-  if DEBUG: print('G2.degree:', G2.degree)
-  nodes_of_G2Labels = groups(G2.labels)
-  G2_nodes_cover_degree = groups_to_accumulated_groups(groups(G2.degree))
-  if DEBUG: print('G2_nodes_cover_degree:', G2_nodes_cover_degree)
-  label_rarity_G2 = {label: len(nodes) for label, nodes in nodes_of_G2Labels.items()}
-  if DEBUG: print('label_rarity_G2:', label_rarity_G2)
-
-  k = int(stdin.readline())
-  TS_query = (TTL - ts_start) // k
-  res: List[Result] = []
-  for i in range(1, 1+k):
-    if time_ns() > TTL: break
-
-    TTL_query = ts_start + TS_query * i
-    G1 = read_graph()
-    if DEBUG: print('G1.degree:', G1.degree)
-    nodes_of_G1Labels = groups(G1.labels)
-    G1_nodes_cover_degree = groups_to_accumulated_groups(groups(G1.degree))
-    if DEBUG: print('G1_nodes_cover_degree:', G1_nodes_cover_degree)
-    mapping = {}
-    reverse_mapping = {}
-    T1 = set()
-    T2 = set()
-
-    fmap = vf2pp_find_isomorphism()
-    if fmap is not None:
-      f = tuple(fmap[i] for i in range(len(fmap)))
-      res.append((i, f))
-
+def write_results(res:List[Result]):
   stdout.write(str(len(res)))
   stdout.write('\n')
   for i, f in res:
@@ -311,6 +339,37 @@ if __name__ == '__main__':
       stdout.write(str(x + 1))
     stdout.write('\n')
   stdout.flush()
+
+
+if __name__ == '__main__':
+  G2 = read_graph()
+  if DEBUG:
+    print('G2.degree:', G2.degree)
+    print('G2.nodes_cover_degree:', G2.nodes_cover_degree)
+  label_rarity_G2 = {label: len(nodes) for label, nodes in G2.nodes_of_labels.items()}
+  if DEBUG: print('label_rarity_G2:', label_rarity_G2)
+
+  k = int(stdin.readline())
+  TS_query = (TTL - ts_start) // k 
+  res: List[Result] = []
+  for i in range(1, 1+k):
+    #if time_ns() > TTL: break
+
+    TTL_query = ts_start + TS_query * i
+    G1 = read_graph()
+    if DEBUG:
+      print('G1.degree:', G1.degree)
+      print('G1.nodes_cover_degree:', G1.nodes_cover_degree)
+    mapping.clear()
+    reverse_mapping.clear()
+    T1.clear()
+    T2.clear()
+
+    fmap = vf2pp_find_isomorphism()
+    if fmap is not None:
+      f = tuple(fmap[i] for i in range(len(fmap)))
+      res.append((i, f))
+  write_results(res)
 
   if platform == 'win32':
     print()
