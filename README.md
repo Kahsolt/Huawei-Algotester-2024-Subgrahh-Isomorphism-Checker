@@ -18,6 +18,11 @@ Contest page: https://competition.huaweicloud.com/information/1000042127/circums
 | :-: | :-: | :-: |
 | python | 5741489 | rt = 60s (G2优化处理前) |
 | python | 6842356 | rt = 59s~60s|
+| python | 6945793 | rt = 45s (wtf??) |
+| python | 6903400 | rt = 30s |
+| python | 6485614 | rt = 15s |
+| cpp    |   36629 | rt = 45s |
+| cpp    |   27305 | rt = 30s |
 
 
 ### Quickstart
